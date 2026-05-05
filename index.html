@@ -306,8 +306,8 @@ async function loadLuffy() {
   luffyModel.scale.setScalar(0.5);
   luffyModel.position.set(0, -10, 0);
   luffyModel.visible = false;
-  // idle 애니메이션이 약간 앞으로 기울어진 자세라 살짝 뒤로 보정
-  luffyModel.rotation.x = -0.15; // 약 8.6도 뒤로
+  // idle 애니메이션이 약간 앞으로 기울어진 자세라 살짝만 뒤로 보정
+  luffyModel.rotation.x = -0.08; // 약 4.5도 뒤로 (자연스럽게)
   scene.add(luffyModel);
 
   const shadowMesh = new THREE.Mesh(
