@@ -337,6 +337,28 @@ async function loadLuffy() {
     console.log('Idle:', idleClip.name, idleClip.duration);
     console.log('Punch:', punchClip.name, punchClip.duration);
 
+    // 🦾 punch 애니메이션의 RightArm/RightForeArm scale 트랙 제거
+    // 이걸 안 빼면 우리가 늘려도 mixer가 매 프레임 1.0으로 덮어씀
+    const tracksRemoved = [];
+    punchClip.tracks = punchClip.tracks.filter(track => {
+      const isScaleTrack = track.name.includes('.scale');
+      const isRightArm = track.name.includes('RightArm') || track.name.includes('RightForeArm');
+      if (isScaleTrack && isRightArm) {
+        tracksRemoved.push(track.name);
+        return false; // 제거
+      }
+      return true;
+    });
+    console.log('Removed scale tracks:', tracksRemoved);
+
+    // idle도 마찬가지로
+    idleClip.tracks = idleClip.tracks.filter(track => {
+      const isScaleTrack = track.name.includes('.scale');
+      const isRightArm = track.name.includes('RightArm') || track.name.includes('RightForeArm');
+      if (isScaleTrack && isRightArm) return false;
+      return true;
+    });
+
     idleAction = luffyMixer.clipAction(idleClip);
     idleAction.setLoop(THREE.LoopRepeat);
     idleAction.play();
