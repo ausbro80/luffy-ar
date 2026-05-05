@@ -377,22 +377,30 @@ async function loadLuffy() {
   }
 
   // 🦾 팔 본 찾기 (고무고무 늘리기용)
-  // mixamo 본 이름: mixamorig:RightArm, mixamorig:RightForeArm 등 (콜론 포함)
+  // mixamo 본 이름: mixamorig:RightArm, mixamorig:RightForeArm
+  // Bone 타입 체크 빼고 이름으로만 찾기 (더 안정적)
   luffyModel.traverse((child) => {
-    if (child.isBone || child.type === 'Bone') {
-      const n = child.name;
-      // 정확히 매칭 (mixamorig:RightArm, mixamorig:RightForeArm)
-      if (n === 'mixamorig:RightArm' || n === 'mixamorig:RightForeArm') {
-        armBones.R.push(child);
-      }
-      if (n === 'mixamorig:LeftArm' || n === 'mixamorig:LeftForeArm') {
-        armBones.L.push(child);
-      }
+    const n = child.name;
+    if (n === 'mixamorig:RightArm' || n === 'mixamorig:RightForeArm') {
+      armBones.R.push(child);
+    }
+    if (n === 'mixamorig:LeftArm' || n === 'mixamorig:LeftForeArm') {
+      armBones.L.push(child);
     }
   });
   console.log('Arm bones found - L:', armBones.L.length, 'R:', armBones.R.length);
-  armBones.R.forEach(b => console.log('  R:', b.name));
-  armBones.L.forEach(b => console.log('  L:', b.name));
+  armBones.R.forEach(b => console.log('  R:', b.name, 'type:', b.type));
+  armBones.L.forEach(b => console.log('  L:', b.name, 'type:', b.type));
+
+  // 못 찾았으면 모든 노드 이름 출력 (디버깅용)
+  if (armBones.R.length === 0) {
+    console.warn('❌ No arm bones found! Listing all named nodes:');
+    luffyModel.traverse((child) => {
+      if (child.name && child.name.includes('mixamorig')) {
+        console.log('  -', child.name, '(' + child.type + ')');
+      }
+    });
+  }
 }
 
 const raycaster = new THREE.Raycaster();
