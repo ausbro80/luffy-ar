@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>🏴‍☠️ 루피 고무고무 피스톨 AR 🥊</title>
+<title>🏴‍☠️ Luffy GOMU GOMU PISTOL AR 🥊</title>
 
 <script type="importmap">
 {
@@ -188,14 +188,14 @@
 
 <div id="start-screen">
   <div class="straw-hat-emoji">🏴‍☠️</div>
-  <h1>고무고무 AR</h1>
+  <h1>GOMU GOMU AR</h1>
   <div class="subtitle">MUGIWARA NO LUFFY</div>
-  <div class="birthday">🎂 5월 5일 LUFFY 생일 🎂</div>
+  <div class="birthday">🎂 May 5 - LUFFY's Birthday 🎂</div>
   <button class="start-btn" id="start-btn" disabled>LOADING...</button>
   <div class="instructions">
-    👆 화면을 탭해서 <b>바닥</b>에 루피 소환!<br>
-    ✊ 주먹 1개 → <b>일반 펀치</b><br>
-    ✊✊ 주먹 2개 → <b>고무고무 피스톨!!</b> 🥊
+    👆 Tap the <b>floor</b> to summon Luffy!<br>
+    ✊ 1 fist → <b>PUNCH</b><br>
+    ✊✊ 2 fists → <b>GOMU GOMU PISTOL!!</b> 🥊
   </div>
 </div>
 
@@ -213,7 +213,7 @@
 <div id="hand-indicator">✋ HAND</div>
 <div id="punch-counter">🥊 <span id="punch-count">0</span></div>
 
-<div id="hint" class="active">📷 카메라 준비 중...</div>
+<div id="hint" class="active">📷 Camera loading...</div>
 
 <div id="punch-text">고무고무<br>피스톨!!</div>
 
@@ -476,7 +476,7 @@ function placeLuffyAt(position) {
     }
     requestAnimationFrame(growStep);
 
-    hintEl.textContent = '✊ 주먹을 쥐어보세요!';
+    hintEl.textContent = '✊ Make a fist!';
     spawnConfetti();
     if (navigator.vibrate) navigator.vibrate([50, 30, 100]);
   } else {
@@ -523,7 +523,7 @@ function triggerPunch(mode = 'normal') {
 
   // 텍스트: 모드별 다른 표시
   if (mode === 'gomu') {
-    punchTextEl.innerHTML = '고무고무<br>피스톨!!';
+    punchTextEl.innerHTML = 'GOMU GOMU<br>PISTOL!!';
   } else {
     punchTextEl.innerHTML = 'PUNCH!!';
   }
@@ -548,17 +548,19 @@ function triggerPunch(mode = 'normal') {
   // 🦾 고무고무 모드일 때만 팔 늘리기
   if (mode === 'gomu') {
     console.log('🦾 GOMU GOMU activated! armBones.R:', armBones.R.length);
-    // punch 애니메이션이 ~2초이고, 팔이 앞으로 뻗는 시점은 약 0.6~1.2초 구간
-    // 그 시점에 맞춰서 늘리기
+    // mixamo punch 애니메이션은 약 2초:
+    //   0~0.6초: 차렷 → 어깨 들어올림
+    //   0.6~0.9초: 팔 앞으로 뻗는 임팩트 ⭐ 여기서 늘려야 함!
+    //   0.9~2.0초: 복귀
     const stretchStart = performance.now();
-    const stretchDelay = 400; // 0.4초 후 시작 (펀치 모션이 시작되어 팔이 앞으로 향할 때)
-    const stretchDuration = 800; // 0.8초 동안만 (짧고 강렬하게)
-    const maxStretch = 5.0; // 더 강력하게 5배
+    const stretchDelay = 600; // 0.6초 후 시작 (팔이 앞을 향한 시점)
+    const stretchDuration = 400; // 0.4초만 짧게! (팩트 순간)
+    const maxStretch = 5.0;
 
     function stretchStep() {
       const elapsed = performance.now() - stretchStart;
 
-      // 시작 전 대기
+      // 시작 전 대기 (어깨가 회전해서 앞을 향할 때까지)
       if (elapsed < stretchDelay) {
         stretchAmount = 1.0;
         requestAnimationFrame(stretchStep);
@@ -573,11 +575,11 @@ function triggerPunch(mode = 'normal') {
         return;
       }
 
-      // 0~0.3: 빠르게 늘어남 (펀치 임팩트), 0.3~1.0: 천천히 복귀
+      // 0~0.4: 매우 빠르게 늘어남 (임팩트!), 0.4~1.0: 빠르게 복귀
       let progress;
       if (t < 0.3) {
         progress = t / 0.3;
-        progress = 1 - Math.pow(1 - progress, 4); // 더 강한 ease-out
+        progress = 1 - Math.pow(1 - progress, 5); // 매우 강한 ease-out
       } else {
         progress = 1 - ((t - 0.3) / 0.7);
         progress = Math.max(0, progress);
@@ -653,7 +655,7 @@ function onHandsResults(results) {
     handIndicator.classList.remove('active', 'fist', 'open', 'double');
     hintEl.classList.remove('attack');
     if (hintEl.classList.contains('active')) {
-      hintEl.textContent = '✋ 손을 카메라 앞에 보여주세요';
+      hintEl.textContent = '✋ Show your hand to camera';
     }
     return;
   }
@@ -668,31 +670,29 @@ function onHandsResults(results) {
   hintEl.classList.add('active');
 
   if (fistCount >= 2) {
-    // 🔥 두 주먹 = 고무고무 피스톨!
+    // 🔥 두 주먹 = GOMU GOMU PISTOL!
     handIndicator.classList.remove('fist', 'open');
     handIndicator.classList.add('double');
     handIndicator.textContent = '✊✊ GOMU GOMU!';
     hintEl.classList.add('attack');
-    hintEl.textContent = '🥊 고무고무 피스톨!!';
-    triggerPunch('gomu'); // 고무고무
+    hintEl.textContent = '🥊 GOMU GOMU PISTOL!!';
+    triggerPunch('gomu');
   } else if (fistCount === 1) {
-    // 일반 펀치
     handIndicator.classList.remove('open', 'double');
     handIndicator.classList.add('fist');
     handIndicator.textContent = '✊ PUNCH!';
     hintEl.classList.add('attack');
-    hintEl.textContent = '🥊 펀치!';
+    hintEl.textContent = '🥊 PUNCH!';
     triggerPunch('normal');
   } else {
-    // 손은 보이지만 주먹 X
     handIndicator.classList.remove('fist', 'double');
     handIndicator.classList.add('open');
     handIndicator.textContent = handCount >= 2 ? '✋✋ OPEN' : '✋ OPEN';
     hintEl.classList.remove('attack');
     if (handCount >= 2) {
-      hintEl.textContent = '✊✊ 두 주먹 = 고무고무!';
+      hintEl.textContent = '✊✊ Both fists = GOMU GOMU!';
     } else {
-      hintEl.textContent = '✊ 주먹 1개 = 펀치 / ✊✊ 2개 = 고무고무!';
+      hintEl.textContent = '✊ 1 fist = PUNCH / ✊✊ 2 fists = GOMU!';
     }
   }
 }
@@ -791,7 +791,7 @@ async function startAR() {
     hideStatus();
     arUI.classList.add('active');
     hintEl.classList.add('active');
-    hintEl.textContent = '👆 바닥/책상을 탭하세요!';
+    hintEl.textContent = '👆 Tap the floor!';
 
     document.addEventListener('click', handleTap);
     document.addEventListener('touchend', (e) => { handleTap(e); }, { passive: true });
