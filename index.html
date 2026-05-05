@@ -78,8 +78,9 @@
   /* AR 화면 */
   #video {
     position: fixed; inset: 0; width: 100%; height: 100%;
-    object-fit: cover; z-index: 1; transform: scaleX(-1);
+    object-fit: cover; z-index: 1;
   }
+  #video.mirror { transform: scaleX(-1); }
   #three-canvas {
     position: fixed; inset: 0; z-index: 2; pointer-events: none;
   }
@@ -105,6 +106,11 @@
     padding: 8px 16px; border-radius: 999px;
     font-size: 11px; font-weight: 900; letter-spacing: 2px;
     cursor: pointer; pointer-events: auto;
+  }
+  .cam-switch-btn {
+    background: rgba(0,0,0,0.7); color: #fff; border: 2px solid var(--luffy-yellow);
+    padding: 8px 12px; border-radius: 999px;
+    font-size: 14px; cursor: pointer; pointer-events: auto;
   }
 
   /* 안내 */
@@ -222,7 +228,10 @@
 
 <div id="ar-ui">
   <div class="badge">LUFFY LIVE</div>
-  <button class="stop-btn" id="stop-btn">EXIT</button>
+  <div style="display: flex; gap: 8px; pointer-events: auto;">
+    <button class="cam-switch-btn" id="cam-switch-btn" title="카메라 전환">🔄</button>
+    <button class="stop-btn" id="stop-btn">EXIT</button>
+  </div>
 </div>
 
 <div id="hand-indicator">✋ HAND</div>
@@ -332,28 +341,43 @@ async function loadLuffy() {
     }
   });
 
-  // 본 찾기 (어깨 1, 어깨 2, 팔꿈치, 손목)
-  // 늘릴 때: shoulder2, elbow의 scale.y 증가시킴 (팔 길이방향)
+  // 본 찾기 - shoulder1(자세 보정용), shoulder2/elbow(늘리기용)
+  let shoulderRoot = { L: null, R: null }; // 어깨 회전용 (T자 보정)
+
   luffyModel.traverse((child) => {
     if (child.isBone || child.type === 'Bone') {
       const n = child.name;
-      // 오른팔
+      // 어깨 루트 본 (shoulder 1) - T자 자세 → 차렷 자세로 회전
+      if (/shoulder 1\.R/i.test(n)) shoulderRoot.R = child;
+      if (/shoulder 1\.L/i.test(n)) shoulderRoot.L = child;
+      // 늘리기용 본 (shoulder 2, elbow)
       if (/shoulder 2\.R/i.test(n) || /elbow\.R/i.test(n)) {
         armBones.R.push(child);
       }
-      // 왼팔
       if (/shoulder 2\.L/i.test(n) || /elbow\.L/i.test(n)) {
         armBones.L.push(child);
       }
     }
   });
   console.log('Arm bones:', { L: armBones.L.length, R: armBones.R.length });
+  console.log('Shoulder roots:', { L: !!shoulderRoot.L, R: !!shoulderRoot.R });
 
-  // 사이즈 + 위치 조정
-  luffyModel.scale.setScalar(0.8); // 약간 작게
-  luffyModel.position.set(0, -10, 0); // 처음엔 안 보이게 (탭하면 나타남)
+  // 🎯 T자 자세 → 차렷 자세로 회전
+  // 어깨 본을 z축으로 회전시켜서 팔이 아래로 떨어지게
+  if (shoulderRoot.R) {
+    shoulderRoot.R.rotation.z -= 1.3; // 우측 팔 아래로
+    luffyModel.userData.shoulderR = shoulderRoot.R;
+  }
+  if (shoulderRoot.L) {
+    shoulderRoot.L.rotation.z += 1.3; // 좌측 팔 아래로
+    luffyModel.userData.shoulderL = shoulderRoot.L;
+  }
+
+  // 사이즈 + 위치 조정 (작게!)
+  luffyModel.scale.setScalar(0.5); // 0.8 → 0.5 (40% 더 작게)
+  luffyModel.position.set(0, -10, 0);
   luffyModel.rotation.y = 0;
-  luffyModel.visible = false; // 처음엔 숨김
+  luffyModel.visible = false;
 
   scene.add(luffyModel);
 
@@ -373,11 +397,12 @@ async function loadLuffy() {
   luffyModel.userData.shadow = shadowMesh;
   scene.add(shadowMesh);
 
-  // 애니메이션 (있으면)
+  // 애니메이션 (있으면) - 눈 깜빡임 천천히
   if (gltf.animations && gltf.animations.length > 0) {
     luffyMixer = new THREE.AnimationMixer(luffyModel);
     const action = luffyMixer.clipAction(gltf.animations[0]);
-    action.play(); // blink 등 자동
+    action.timeScale = 0.2; // 5배 느리게 (덜 깜빡)
+    action.play();
   }
 }
 
@@ -445,9 +470,8 @@ function placeLuffyAt(position) {
     function growStep() {
       const elapsed = performance.now() - startTime;
       const t = Math.min(1, elapsed / 600);
-      // bounce ease-out
       const eased = 1 - Math.pow(1 - t, 3);
-      const scale = 0.01 + (0.8 - 0.01) * eased;
+      const scale = 0.01 + (0.5 - 0.01) * eased; // 0.8 → 0.5
       luffyModel.scale.setScalar(scale);
       if (t < 1) requestAnimationFrame(growStep);
     }
@@ -512,26 +536,41 @@ function triggerPunch() {
   // 진동
   if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
 
-  // 팔 늘리기 애니메이션 (오른팔 + 왼팔 동시)
+  // 팔 늘리기 애니메이션 (오른팔로 펀치)
   const startTime = performance.now();
-  const duration = 1200; // 1.2초
-  const stretchAmount = 5.0; // 5배
+  const duration = 1200;
+  const stretchAmount = 6.0; // 6배
+
+  // 어깨 본 (자세 회전용)
+  const shoulderR = luffyModel ? luffyModel.userData.shoulderR : null;
+  const shoulderL = luffyModel ? luffyModel.userData.shoulderL : null;
+  const baseRotR = shoulderR ? shoulderR.rotation.z : 0;
+  const baseRotL = shoulderL ? shoulderL.rotation.z : 0;
 
   function punchStep() {
     const elapsed = performance.now() - startTime;
     const t = Math.min(1, elapsed / duration);
-    // 0~0.4: 늘림, 0.4~1.0: 복귀
     let progress;
     if (t < 0.3) {
-      // 빠르게 늘어남
       progress = (t / 0.3);
-      progress = 1 - Math.pow(1 - progress, 3); // ease-out
+      progress = 1 - Math.pow(1 - progress, 3);
     } else {
-      // 천천히 복귀
       progress = 1 - ((t - 0.3) / 0.7);
       progress = Math.max(0, progress);
     }
 
+    // 1. 어깨 회전: 팔이 카메라 쪽으로 향하게 (z축 회전 복원하면서 앞으로)
+    if (shoulderR) {
+      // 정상 차렷 자세(baseRotR) → 펀치 자세(앞으로 들어 올림)
+      shoulderR.rotation.z = baseRotR + progress * 1.0; // 위로 들어 올림
+      shoulderR.rotation.x = -progress * 1.2; // 앞으로 (카메라 쪽)
+    }
+    if (shoulderL) {
+      shoulderL.rotation.z = baseRotL - progress * 1.0;
+      shoulderL.rotation.x = -progress * 1.2;
+    }
+
+    // 2. 팔 본 늘리기 (Y축 = 팔 길이 방향)
     const scale = 1 + (stretchAmount - 1) * progress;
     armBones.R.forEach(bone => bone.scale.y = scale);
     armBones.L.forEach(bone => bone.scale.y = scale);
@@ -542,6 +581,14 @@ function triggerPunch() {
       // 원위치
       armBones.R.forEach(bone => bone.scale.y = 1);
       armBones.L.forEach(bone => bone.scale.y = 1);
+      if (shoulderR) {
+        shoulderR.rotation.z = baseRotR;
+        shoulderR.rotation.x = 0;
+      }
+      if (shoulderL) {
+        shoulderL.rotation.z = baseRotL;
+        shoulderL.rotation.x = 0;
+      }
     }
   }
   requestAnimationFrame(punchStep);
@@ -675,6 +722,38 @@ function detectFist(landmarks) {
 }
 
 // =========================================
+// 카메라 전환 (전면 ↔ 후면)
+// =========================================
+let currentFacing = 'environment'; // 후면 시작
+
+async function switchCamera() {
+  if (!videoEl.srcObject) return;
+
+  // 기존 스트림 정지
+  videoEl.srcObject.getTracks().forEach(t => t.stop());
+
+  // 전환
+  currentFacing = currentFacing === 'user' ? 'environment' : 'user';
+
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: currentFacing }, width: 1280, height: 720 }
+    });
+    videoEl.srcObject = newStream;
+    await videoEl.play();
+
+    // 전면이면 미러링
+    if (currentFacing === 'user') {
+      videoEl.classList.add('mirror');
+    } else {
+      videoEl.classList.remove('mirror');
+    }
+  } catch (e) {
+    console.error('Camera switch failed:', e);
+  }
+}
+
+// =========================================
 // 메인 시작
 // =========================================
 async function startAR() {
@@ -683,10 +762,14 @@ async function startAR() {
 
     initThree();
 
-    // 카메라 권한
+    // 카메라 권한 (후면 카메라 우선)
     showStatus(`<div class="spinner"></div><h3>CAMERA ACCESS</h3>`);
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: 1280, height: 720 }
+      video: {
+        facingMode: { ideal: 'environment' }, // 후면 카메라
+        width: 1280,
+        height: 720
+      }
     });
     videoEl.srcObject = stream;
     await new Promise(resolve => videoEl.onloadedmetadata = resolve);
@@ -814,6 +897,7 @@ startBtn.addEventListener('click', () => {
   setTimeout(startAR, 500);
 });
 stopBtn.addEventListener('click', stopAR);
+document.getElementById('cam-switch-btn').addEventListener('click', switchCamera);
 
 // 화면 사이즈 변경
 window.addEventListener('resize', () => {
