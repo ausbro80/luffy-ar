@@ -376,31 +376,37 @@ async function loadLuffy() {
   }
 
   // 🦾 팔 본 찾기 — SkinnedMesh의 skeleton에서 직접 가져오기
-  // GLTFLoader가 콜론(:)을 제거할 수도 있으니 둘 다 매칭
+  // GLTFLoader가 콜론(:)을 제거하든 말든 부분 문자열로 매칭
   console.log('=== Searching for arm bones ===');
   luffyModel.traverse((child) => {
     if (child.isSkinnedMesh && child.skeleton) {
       console.log('Found SkinnedMesh:', child.name, 'with', child.skeleton.bones.length, 'bones');
       child.skeleton.bones.forEach(bone => {
         const n = bone.name;
-        // mixamorig:RightArm 또는 mixamorigRightArm 둘 다 매칭
-        if (n === 'mixamorig:RightArm' || n === 'mixamorigRightArm' ||
-            n === 'mixamorig:RightForeArm' || n === 'mixamorigRightForeArm') {
+        // 'RightArm' 또는 'RightForeArm'을 포함하면서, Hand는 아닌 본
+        // (RightHandThumb 등 손가락 본은 제외)
+        if (n.includes('RightArm') || n.includes('RightForeArm')) {
           if (!armBones.R.includes(bone)) armBones.R.push(bone);
         }
-        if (n === 'mixamorig:LeftArm' || n === 'mixamorigLeftArm' ||
-            n === 'mixamorig:LeftForeArm' || n === 'mixamorigLeftForeArm') {
+        if (n.includes('LeftArm') || n.includes('LeftForeArm')) {
           if (!armBones.L.includes(bone)) armBones.L.push(bone);
         }
       });
     }
   });
   console.log('Arm bones found - L:', armBones.L.length, 'R:', armBones.R.length);
-  armBones.R.forEach(b => console.log('  R:', b.name, '| isBone:', b.isBone));
-  armBones.L.forEach(b => console.log('  L:', b.name, '| isBone:', b.isBone));
+  armBones.R.forEach(b => console.log('  R:', b.name));
+  armBones.L.forEach(b => console.log('  L:', b.name));
 
   if (armBones.R.length === 0) {
-    console.warn('❌ No arm bones found!');
+    console.warn('❌ STILL no arm bones found! Listing all bones:');
+    luffyModel.traverse((child) => {
+      if (child.isSkinnedMesh && child.skeleton) {
+        child.skeleton.bones.forEach(bone => {
+          console.log('  bone:', bone.name);
+        });
+      }
+    });
   }
 }
 
