@@ -545,17 +545,27 @@ function triggerPunch(mode = 'normal') {
   punchAction.reset();
   punchAction.play();
 
-  // 🦾 고무고무 모드일 때만 팔 늘리기 (stretchAmount만 업데이트, 적용은 render loop에서)
+  // 🦾 고무고무 모드일 때만 팔 늘리기
   if (mode === 'gomu') {
     console.log('🦾 GOMU GOMU activated! armBones.R:', armBones.R.length);
+    // punch 애니메이션이 ~2초이고, 팔이 앞으로 뻗는 시점은 약 0.6~1.2초 구간
+    // 그 시점에 맞춰서 늘리기
     const stretchStart = performance.now();
-    const stretchDuration = 1500;
-    const maxStretch = 4.0;
-    let lastLogTime = 0;
+    const stretchDelay = 400; // 0.4초 후 시작 (펀치 모션이 시작되어 팔이 앞으로 향할 때)
+    const stretchDuration = 800; // 0.8초 동안만 (짧고 강렬하게)
+    const maxStretch = 5.0; // 더 강력하게 5배
 
     function stretchStep() {
       const elapsed = performance.now() - stretchStart;
-      const t = elapsed / stretchDuration;
+
+      // 시작 전 대기
+      if (elapsed < stretchDelay) {
+        stretchAmount = 1.0;
+        requestAnimationFrame(stretchStep);
+        return;
+      }
+
+      const t = (elapsed - stretchDelay) / stretchDuration;
       if (t >= 1) {
         stretchAmount = 1.0;
         isPunching = false;
@@ -563,21 +573,17 @@ function triggerPunch(mode = 'normal') {
         return;
       }
 
+      // 0~0.3: 빠르게 늘어남 (펀치 임팩트), 0.3~1.0: 천천히 복귀
       let progress;
-      if (t < 0.35) {
-        progress = t / 0.35;
-        progress = 1 - Math.pow(1 - progress, 3);
+      if (t < 0.3) {
+        progress = t / 0.3;
+        progress = 1 - Math.pow(1 - progress, 4); // 더 강한 ease-out
       } else {
-        progress = 1 - ((t - 0.35) / 0.65);
+        progress = 1 - ((t - 0.3) / 0.7);
         progress = Math.max(0, progress);
       }
 
       stretchAmount = 1 + (maxStretch - 1) * progress;
-      // 100ms마다 로그
-      if (elapsed - lastLogTime > 100) {
-        console.log('  stretchAmount:', stretchAmount.toFixed(2));
-        lastLogTime = elapsed;
-      }
       requestAnimationFrame(stretchStep);
     }
     requestAnimationFrame(stretchStep);
@@ -796,10 +802,19 @@ async function startAR() {
       if (luffyMixer) luffyMixer.update(dt);
 
       // 🦾 고무고무 강제 적용 (mixer가 덮어씌운 scale을 다시 설정)
-      // mixer.update() 직후에 적용해야 mixer가 다시 덮어쓰지 못함
-      if (armBones.R.length > 0) {
+      // mixamo 본은 보통 Y축이 길이방향이지만 혹시 모르니 디버그
+      if (armBones.R.length > 0 && stretchAmount !== 1.0) {
         armBones.R.forEach(b => {
           b.scale.y = stretchAmount;
+          // 디버그: 본의 실제 적용된 scale 1초에 1번만 로그
+          if (Math.random() < 0.01) {
+            console.log(`Bone ${b.name} scale: x=${b.scale.x.toFixed(2)} y=${b.scale.y.toFixed(2)} z=${b.scale.z.toFixed(2)}`);
+          }
+        });
+      } else if (armBones.R.length > 0) {
+        // stretchAmount = 1일 때도 적용 (mixer 덮어쓰기 방어)
+        armBones.R.forEach(b => {
+          b.scale.y = 1.0;
         });
       }
 
