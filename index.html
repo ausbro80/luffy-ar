@@ -368,6 +368,7 @@ async function loadLuffy() {
 
     luffyMixer.addEventListener('finished', (e) => {
       if (e.action === punchAction) {
+        punchAction.timeScale = 1.0; // 슬로우 리셋
         punchAction.stop();
         idleAction.reset();
         idleAction.play();
@@ -540,52 +541,82 @@ function triggerPunch(mode = 'normal') {
     }
   }
 
-  // 🥊 punch 애니메이션 재생 (둘 다 같은 애니메이션 사용)
+  // 🥊 punch 애니메이션 재생
   idleAction.stop();
   punchAction.reset();
   punchAction.play();
 
-  // 🦾 고무고무 모드일 때만 팔 늘리기
+  // 🐌 슬로우 모션 (고무고무 모드일 때만)
+  if (mode === 'gomu') {
+    punchAction.timeScale = 1.0; // 일단 정상 속도로 시작
+
+    // 0.5초 후 슬로우 모션 진입
+    setTimeout(() => {
+      if (punchAction.isRunning()) {
+        punchAction.timeScale = 0.25; // 4배 느림 (슬로우 모션!)
+        console.log('🐌 SLOW MOTION ON');
+      }
+    }, 500);
+
+    // 1.5초 후 정상 속도 복귀
+    setTimeout(() => {
+      if (punchAction.isRunning()) {
+        punchAction.timeScale = 1.5; // 빠르게 마무리
+        console.log('⚡ Normal speed back');
+      }
+    }, 1500);
+  } else {
+    punchAction.timeScale = 1.0;
+  }
+
+  // 🦾 고무고무 모드일 때만 팔 늘리기 — 슬로우 모션 구간에 맞춤
   if (mode === 'gomu') {
     console.log('🦾 GOMU GOMU activated! armBones.R:', armBones.R.length);
-    // mixamo punch 애니메이션은 약 2초:
-    //   0~0.6초: 차렷 → 어깨 들어올림
-    //   0.6~0.9초: 팔 앞으로 뻗는 임팩트 ⭐ 여기서 늘려야 함!
-    //   0.9~2.0초: 복귀
+    // 슬로우 모션 0.5~1.5초 구간 = 펀치 임팩트
+    // 그 안에서 팔 늘어남
     const stretchStart = performance.now();
-    const stretchDelay = 600; // 0.6초 후 시작 (팔이 앞을 향한 시점)
-    const stretchDuration = 400; // 0.4초만 짧게! (팩트 순간)
-    const maxStretch = 5.0;
+    const stretchDelay = 700;    // 0.7초 후 시작 (슬로우 모션 중간)
+    const stretchPeak = 300;     // 0.3초 동안 최대치까지
+    const stretchHold = 200;     // 0.2초 유지 (임팩트!)
+    const stretchReturn = 400;   // 0.4초 동안 복귀
+    const maxStretch = 5.5;
 
     function stretchStep() {
       const elapsed = performance.now() - stretchStart;
 
-      // 시작 전 대기 (어깨가 회전해서 앞을 향할 때까지)
+      // 시작 전 대기
       if (elapsed < stretchDelay) {
         stretchAmount = 1.0;
         requestAnimationFrame(stretchStep);
         return;
       }
 
-      const t = (elapsed - stretchDelay) / stretchDuration;
-      if (t >= 1) {
+      const localT = elapsed - stretchDelay;
+
+      // Phase 1: 빠르게 늘어남 (0~stretchPeak)
+      if (localT < stretchPeak) {
+        let p = localT / stretchPeak;
+        p = 1 - Math.pow(1 - p, 4); // 강한 ease-out
+        stretchAmount = 1 + (maxStretch - 1) * p;
+      }
+      // Phase 2: 최대 유지 (stretchPeak ~ stretchPeak+stretchHold)
+      else if (localT < stretchPeak + stretchHold) {
+        stretchAmount = maxStretch; // 쭉 뻗음 유지!
+      }
+      // Phase 3: 복귀 (stretchPeak+stretchHold ~ end)
+      else if (localT < stretchPeak + stretchHold + stretchReturn) {
+        const returnT = (localT - stretchPeak - stretchHold) / stretchReturn;
+        const p = 1 - returnT;
+        stretchAmount = 1 + (maxStretch - 1) * p;
+      }
+      // 끝
+      else {
         stretchAmount = 1.0;
         isPunching = false;
         console.log('🦾 stretch ended');
         return;
       }
 
-      // 0~0.4: 매우 빠르게 늘어남 (임팩트!), 0.4~1.0: 빠르게 복귀
-      let progress;
-      if (t < 0.3) {
-        progress = t / 0.3;
-        progress = 1 - Math.pow(1 - progress, 5); // 매우 강한 ease-out
-      } else {
-        progress = 1 - ((t - 0.3) / 0.7);
-        progress = Math.max(0, progress);
-      }
-
-      stretchAmount = 1 + (maxStretch - 1) * progress;
       requestAnimationFrame(stretchStep);
     }
     requestAnimationFrame(stretchStep);
