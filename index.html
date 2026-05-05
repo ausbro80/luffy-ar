@@ -485,9 +485,8 @@ function triggerPunch() {
     const elapsed = performance.now() - stretchStart;
     const t = elapsed / stretchDuration;
     if (t >= 1) {
-      // 원위치
+      // 원위치 (오른팔만 건드림)
       armBones.R.forEach(b => b.scale.y = 1);
-      armBones.L.forEach(b => b.scale.y = 1);
       isPunching = false;
       return;
     }
@@ -503,8 +502,9 @@ function triggerPunch() {
     }
 
     const scale = 1 + (maxStretch - 1) * progress;
+    // 🥊 오른팔만 늘리기 (펀치하는 쪽)
     armBones.R.forEach(b => b.scale.y = scale);
-    armBones.L.forEach(b => b.scale.y = scale);
+    // 왼팔은 그대로 (1배)
 
     requestAnimationFrame(stretchStep);
   }
