@@ -546,45 +546,44 @@ function triggerPunch(mode = 'normal') {
   punchAction.reset();
   punchAction.play();
 
-  // 🐌 슬로우 모션 (고무고무 모드일 때만)
+  // 🐌 슬로우 모션 + 일시정지 (고무고무 모드일 때만)
   if (mode === 'gomu') {
-    punchAction.timeScale = 1.0; // 일단 정상 속도로 시작
+    punchAction.timeScale = 0.6; // 약간 느리게 시작
 
-    // 0.5초 후 슬로우 모션 진입
+    // 0.8초 후: 팔이 가장 앞으로 뻗은 시점에서 일시정지
     setTimeout(() => {
       if (punchAction.isRunning()) {
-        punchAction.timeScale = 0.25; // 4배 느림 (슬로우 모션!)
-        console.log('🐌 SLOW MOTION ON');
+        punchAction.timeScale = 0; // 일시정지!
+        console.log('⏸️ PAUSED at punch peak');
       }
-    }, 500);
+    }, 800);
 
-    // 1.5초 후 정상 속도 복귀
+    // 1.6초 후: 다시 재생 (총 0.8초 동안 정지 = stretch 진행 중)
     setTimeout(() => {
-      if (punchAction.isRunning()) {
+      if (punchAction.isRunning() || punchAction.paused) {
         punchAction.timeScale = 1.5; // 빠르게 마무리
-        console.log('⚡ Normal speed back');
+        console.log('▶️ RESUME');
       }
-    }, 1500);
+    }, 1600);
   } else {
     punchAction.timeScale = 1.0;
   }
 
-  // 🦾 고무고무 모드일 때만 팔 늘리기 — 슬로우 모션 구간에 맞춤
+  // 🦾 고무고무 모드일 때만 팔 늘리기 — 일시정지 구간(0.8~1.6초)에 맞춤
   if (mode === 'gomu') {
     console.log('🦾 GOMU GOMU activated! armBones.R:', armBones.R.length);
-    // 슬로우 모션 0.5~1.5초 구간 = 펀치 임팩트
-    // 그 안에서 팔 늘어남
+    // 펀치 일시정지 시점 (0.8초)에 팔이 앞으로 뻗은 자세
+    // 그 자세에서 0.8초간 늘렸다 줄임
     const stretchStart = performance.now();
-    const stretchDelay = 700;    // 0.7초 후 시작 (슬로우 모션 중간)
-    const stretchPeak = 300;     // 0.3초 동안 최대치까지
-    const stretchHold = 200;     // 0.2초 유지 (임팩트!)
-    const stretchReturn = 400;   // 0.4초 동안 복귀
+    const stretchDelay = 850;    // 0.85초 후 시작 (일시정지 직후)
+    const stretchPeak = 250;     // 0.25초 동안 최대치까지
+    const stretchHold = 200;     // 0.2초 유지
+    const stretchReturn = 300;   // 0.3초 동안 복귀
     const maxStretch = 5.5;
 
     function stretchStep() {
       const elapsed = performance.now() - stretchStart;
 
-      // 시작 전 대기
       if (elapsed < stretchDelay) {
         stretchAmount = 1.0;
         requestAnimationFrame(stretchStep);
@@ -593,23 +592,21 @@ function triggerPunch(mode = 'normal') {
 
       const localT = elapsed - stretchDelay;
 
-      // Phase 1: 빠르게 늘어남 (0~stretchPeak)
+      // Phase 1: 빠르게 늘어남
       if (localT < stretchPeak) {
         let p = localT / stretchPeak;
-        p = 1 - Math.pow(1 - p, 4); // 강한 ease-out
+        p = 1 - Math.pow(1 - p, 4);
         stretchAmount = 1 + (maxStretch - 1) * p;
       }
-      // Phase 2: 최대 유지 (stretchPeak ~ stretchPeak+stretchHold)
+      // Phase 2: 최대 유지 (임팩트!)
       else if (localT < stretchPeak + stretchHold) {
-        stretchAmount = maxStretch; // 쭉 뻗음 유지!
+        stretchAmount = maxStretch;
       }
-      // Phase 3: 복귀 (stretchPeak+stretchHold ~ end)
+      // Phase 3: 복귀
       else if (localT < stretchPeak + stretchHold + stretchReturn) {
         const returnT = (localT - stretchPeak - stretchHold) / stretchReturn;
-        const p = 1 - returnT;
-        stretchAmount = 1 + (maxStretch - 1) * p;
+        stretchAmount = 1 + (maxStretch - 1) * (1 - returnT);
       }
-      // 끝
       else {
         stretchAmount = 1.0;
         isPunching = false;
