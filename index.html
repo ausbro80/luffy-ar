@@ -306,6 +306,8 @@ async function loadLuffy() {
   luffyModel.scale.setScalar(0.5);
   luffyModel.position.set(0, -10, 0);
   luffyModel.visible = false;
+  // idle 애니메이션이 약간 앞으로 기울어진 자세라 살짝 뒤로 보정
+  luffyModel.rotation.x = -0.15; // 약 8.6도 뒤로
   scene.add(luffyModel);
 
   const shadowMesh = new THREE.Mesh(
@@ -771,22 +773,72 @@ async function switchCamera() {
 }
 
 async function startCameraStream() {
-  // 후면 카메라 강제 (iOS도 작동하도록 exact 사용)
-  const constraints = {
-    video: {
-      facingMode: currentFacing === 'environment' ? { exact: 'environment' } : 'user',
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    }
-  };
-
   let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-  } catch (e) {
-    console.warn('Exact facingMode failed, fallback:', e);
+
+  // 시도 1: 모든 카메라 디바이스 목록에서 후면 카메라 직접 선택
+  if (currentFacing === 'environment') {
+    try {
+      // 먼저 권한 요청 (디바이스 라벨 보려면 필요)
+      const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      tempStream.getTracks().forEach(t => t.stop());
+
+      // 카메라 목록 가져오기
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      console.log('📷 Available cameras:', videoDevices.map(d => d.label));
+
+      // 후면 카메라 찾기 (라벨에 'back', 'rear', '뒤', '환경', '0', 'environment' 등)
+      const backCam = videoDevices.find(d => {
+        const label = d.label.toLowerCase();
+        return label.includes('back') ||
+               label.includes('rear') ||
+               label.includes('environment') ||
+               label.includes('뒤') ||
+               label.includes('후면');
+      });
+
+      if (backCam) {
+        console.log('✅ Found back camera:', backCam.label);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: backCam.deviceId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+      } else {
+        console.warn('⚠️ Back camera not labeled, trying facingMode');
+        throw new Error('back camera not found');
+      }
+    } catch (e) {
+      console.warn('Direct device select failed, trying facingMode exact:', e.message);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { exact: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+      } catch (e2) {
+        console.warn('Exact failed, using ideal:', e2.message);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+      }
+    }
+  } else {
+    // 전면 카메라 (selfie)
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: currentFacing }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
     });
   }
 
@@ -798,6 +850,13 @@ async function startCameraStream() {
     videoEl.classList.add('mirror');
   } else {
     videoEl.classList.remove('mirror');
+  }
+
+  // 어떤 카메라가 활성화됐는지 확인
+  const track = stream.getVideoTracks()[0];
+  if (track) {
+    const settings = track.getSettings();
+    console.log('🎥 Active camera:', track.label, '| facing:', settings.facingMode);
   }
 }
 
