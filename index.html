@@ -343,15 +343,15 @@ async function loadLuffy() {
   }
 
   // 🦾 팔 본 찾기 (고무고무 늘리기용)
-  // mixamo 본 이름: mixamorigRightArm, mixamorigRightForeArm, mixamorigLeftArm, mixamorigLeftForeArm
+  // mixamo 본 이름: mixamorig:RightArm, mixamorig:RightForeArm 등 (콜론 포함)
   luffyModel.traverse((child) => {
     if (child.isBone || child.type === 'Bone') {
-      const n = child.name.toLowerCase();
-      // 위팔 + 아래팔 (forearm 포함)
-      if (n.includes('rightarm') || n.includes('right_arm') || n.includes('rightforearm')) {
+      const n = child.name;
+      // 정확히 매칭 (mixamorig:RightArm, mixamorig:RightForeArm)
+      if (n === 'mixamorig:RightArm' || n === 'mixamorig:RightForeArm') {
         armBones.R.push(child);
       }
-      if (n.includes('leftarm') || n.includes('left_arm') || n.includes('leftforearm')) {
+      if (n === 'mixamorig:LeftArm' || n === 'mixamorig:LeftForeArm') {
         armBones.L.push(child);
       }
     }
