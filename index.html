@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>🏴‍☠️ 루피 고무고무 피스톨 AR 🥊</title>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- MediaPipe Hands -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { --luffy-red: #E63946; --luffy-yellow: #FFD60A; --pirate: #1D3557; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Trebuchet MS', sans-serif; color: #fff; }
+
+  /* 시작 화면 */
+  #start-screen {
+    position: fixed; inset: 0; z-index: 100;
+    background: radial-gradient(circle at center, rgba(230,57,70,0.3), #0a0a18 70%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; text-align: center;
+    transition: opacity 0.6s ease;
+  }
+  #start-screen.hidden { opacity: 0; pointer-events: none; }
+
+  .straw-hat-emoji {
+    font-size: 80px;
+    margin-bottom: 20px;
+    animation: float 3s ease-in-out infinite;
+  }
+  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  h1 {
+    font-size: clamp(28px, 7vw, 48px); font-weight: 900; letter-spacing: 2px;
+    color: var(--luffy-yellow);
+    text-shadow: 0 4px 20px rgba(255,214,10,0.5);
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    font-size: 12px; letter-spacing: 4px; color: rgba(255,214,10,0.8);
+    margin-bottom: 16px;
+  }
+  .birthday {
+    background: linear-gradient(135deg, #FFD60A, #E63946);
+    color: #1D3557; padding: 8px 20px; border-radius: 999px;
+    font-weight: 900; font-size: 13px; letter-spacing: 2px;
+    margin-bottom: 28px; animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 50% { transform: scale(1.05); } }
+
+  .start-btn {
+    background: linear-gradient(180deg, var(--luffy-red), #B22222);
+    color: #fff; border: 4px solid #1D3557;
+    padding: 18px 48px; font-size: 18px; font-weight: 900;
+    letter-spacing: 3px; text-transform: uppercase;
+    border-radius: 999px; cursor: pointer;
+    box-shadow: 0 8px 24px rgba(230,57,70,0.5);
+  }
+  .start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .instructions {
+    margin-top: 20px; font-size: 13px; color: rgba(255,255,255,0.85);
+    line-height: 1.7; max-width: 320px;
+  }
+  .instructions b { color: var(--luffy-yellow); }
+
+  /* AR 화면 */
+  #video {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; z-index: 1; transform: scaleX(-1);
+  }
+  #three-canvas {
+    position: fixed; inset: 0; z-index: 2; pointer-events: none;
+  }
+
+  /* UI */
+  #ar-ui {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    padding: 16px; display: none; justify-content: space-between; align-items: center;
+    pointer-events: none;
+  }
+  #ar-ui.active { display: flex; }
+  .badge {
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(10px);
+    border: 2px solid var(--luffy-yellow);
+    padding: 8px 14px; border-radius: 999px;
+    font-size: 11px; font-weight: 900; letter-spacing: 2px;
+    color: var(--luffy-yellow); pointer-events: auto;
+  }
+  .badge::before { content: '🏴‍☠️'; margin-right: 6px; }
+
+  .stop-btn {
+    background: var(--luffy-red); color: #fff; border: 2px solid #fff;
+    padding: 8px 16px; border-radius: 999px;
+    font-size: 11px; font-weight: 900; letter-spacing: 2px;
+    cursor: pointer; pointer-events: auto;
+  }
+
+  /* 안내 */
+  #hint {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 50; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
+    padding: 14px 24px; border: 3px solid var(--luffy-yellow);
+    border-radius: 999px; font-size: 14px; font-weight: 700;
+    color: var(--luffy-yellow); display: none; white-space: nowrap;
+    text-align: center;
+  }
+  #hint.active { display: block; }
+  #hint.attack { border-color: var(--luffy-red); color: var(--luffy-red); animation: pulse 0.6s infinite; }
+
+  /* 펀치 텍스트 */
+  #punch-text {
+    position: fixed; top: 25%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 80;
+    font-size: clamp(40px, 12vw, 100px);
+    font-weight: 900; color: var(--luffy-red);
+    text-shadow: 0 0 30px rgba(230,57,70,0.8), 6px 6px 0 #1D3557;
+    -webkit-text-stroke: 4px #FFD60A;
+    letter-spacing: 4px;
+    line-height: 1.0;
+    display: none;
+    pointer-events: none;
+    text-align: center;
+  }
+  #punch-text.active {
+    display: block;
+    animation: punch-shake 0.8s ease-out;
+  }
+  @keyframes punch-shake {
+    0% { transform: translate(-50%, -50%) scale(0.3) rotate(-30deg); opacity: 0; }
+    30% { transform: translate(-50%, -50%) scale(1.4) rotate(8deg); opacity: 1; }
+    50% { transform: translate(-50%, -50%) scale(1.1) rotate(-4deg); }
+    70% { transform: translate(-50%, -50%) scale(1.0) rotate(2deg); }
+    100% { transform: translate(-50%, -50%) scale(1.0) rotate(0deg); opacity: 0; }
+  }
+
+  /* 펀치 카운터 */
+  #punch-counter {
+    position: fixed; top: 70px; right: 12px; z-index: 50;
+    background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
+    border: 2px solid var(--luffy-yellow);
+    padding: 8px 14px; border-radius: 12px;
+    color: var(--luffy-yellow); font-weight: 900; font-size: 14px;
+    display: none;
+  }
+  #punch-counter.active { display: block; }
+
+  /* 손 상태 인디케이터 */
+  #hand-indicator {
+    position: fixed; top: 70px; left: 12px; z-index: 50;
+    background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
+    padding: 8px 14px; border-radius: 12px;
+    font-size: 14px; font-weight: 900;
+    display: none; transition: border-color 0.2s;
+    border: 2px solid #666;
+    color: #aaa;
+  }
+  #hand-indicator.active { display: block; }
+  #hand-indicator.fist {
+    border-color: var(--luffy-red);
+    color: var(--luffy-red);
+    animation: pulse 0.4s infinite;
+  }
+  #hand-indicator.open {
+    border-color: #4caf50;
+    color: #4caf50;
+  }
+
+  /* 상태 오버레이 */
+  #status-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.9);
+    display: none; align-items: center; justify-content: center;
+    padding: 24px; text-align: center;
+  }
+  #status-overlay.active { display: flex; }
+  .status-card {
+    background: rgba(255,255,255,0.05); border: 3px solid var(--luffy-red);
+    border-radius: 16px; padding: 32px; max-width: 360px;
+  }
+  .status-card h3 { color: var(--luffy-yellow); margin-bottom: 12px; font-size: 20px; }
+  .status-card p { font-size: 13px; line-height: 1.5; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid rgba(230,57,70,0.2);
+    border-top-color: var(--luffy-red);
+    border-radius: 50%; margin: 0 auto 16px;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- 시작 화면 -->
+<div id="start-screen">
+  <div class="straw-hat-emoji">🏴‍☠️</div>
+  <h1>고무고무 AR</h1>
+  <div class="subtitle">MUGIWARA NO LUFFY</div>
+  <div class="birthday">🎂 5월 5일 LUFFY 생일 🎂</div>
+  <button class="start-btn" id="start-btn" disabled>LOADING...</button>
+  <div class="instructions">
+    👆 화면을 탭해서 <b>바닥/책상</b>에 루피 소환!<br>
+    ✊ <b>주먹</b> 쥐면 → <b>고무고무 피스톨!</b> 🥊
+  </div>
+</div>
+
+<!-- AR 화면 -->
+<video id="video" autoplay playsinline muted></video>
+<canvas id="three-canvas"></canvas>
+
+<div id="ar-ui">
+  <div class="badge">LUFFY LIVE</div>
+  <button class="stop-btn" id="stop-btn">EXIT</button>
+</div>
+
+<div id="hand-indicator">✋ HAND</div>
+<div id="punch-counter">🥊 <span id="punch-count">0</span></div>
+
+<div id="hint" class="active">📷 손을 카메라 앞에 보여주세요</div>
+
+<div id="punch-text">고무고무<br>피스톨!!</div>
+
+<!-- 상태 오버레이 -->
+<div id="status-overlay" class="active">
+  <div class="status-card" id="status-content">
+    <div class="spinner"></div>
+    <h3>LOADING</h3>
+    <p>잠시만요...</p>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ===== DOM 참조 =====
+const startScreen = document.getElementById('start-screen');
+const startBtn = document.getElementById('start-btn');
+const stopBtn = document.getElementById('stop-btn');
+const arUI = document.getElementById('ar-ui');
+const hintEl = document.getElementById('hint');
+const punchTextEl = document.getElementById('punch-text');
+const punchCounterEl = document.getElementById('punch-counter');
+const punchCountSpan = document.getElementById('punch-count');
+const handIndicator = document.getElementById('hand-indicator');
+const statusOv = document.getElementById('status-overlay');
+const statusContent = document.getElementById('status-content');
+const videoEl = document.getElementById('video');
+const canvasEl = document.getElementById('three-canvas');
+
+// ===== 상태 =====
+let punchCount = 0;
+let isPunching = false;
+let lastPunchTime = 0;
+
+function showStatus(html) { statusContent.innerHTML = html; statusOv.classList.add('active'); }
+function hideStatus() { statusOv.classList.remove('active'); }
+function showError(t, m) {
+  statusContent.innerHTML = `<h3 style="color:#ff6677">⚠ ${t}</h3><p>${m}</p><button onclick="location.reload()" style="margin-top:16px;background:#FFD60A;color:#1D3557;border:none;padding:8px 24px;border-radius:999px;font-weight:900;cursor:pointer">RETRY</button>`;
+  statusOv.classList.add('active');
+}
+
+// =========================================
+// THREE.JS 셋업
+// =========================================
+let scene, camera, renderer;
+let luffyModel = null;
+let luffyMixer = null;
+let armBones = { L: [], R: [] };
+let punchProgress = { L: 0, R: 0 };  // 0 = 정상, 1 = 최대 늘림
+let confettiParticles = [];
+
+function initThree() {
+  scene = new THREE.Scene();
+
+  // 카메라: 사용자 시점에서 바닥 보는 각도
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.set(0, 1.6, 0); // 사람 키 높이
+  camera.lookAt(0, 0, -2);
+
+  renderer = new THREE.WebGLRenderer({ canvas: canvasEl, alpha: true, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
+
+  // 조명
+  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const dir1 = new THREE.DirectionalLight(0xffffff, 1.5);
+  dir1.position.set(2, 4, 3);
+  scene.add(dir1);
+  const dir2 = new THREE.DirectionalLight(0xffeeaa, 0.6);
+  dir2.position.set(-2, 2, 2);
+  scene.add(dir2);
+
+  // 바닥 그림자용 (안 보이는 평면)
+  const shadowPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(20, 20),
+    new THREE.ShadowMaterial({ opacity: 0.3, transparent: true })
+  );
+  shadowPlane.rotation.x = -Math.PI / 2;
+  shadowPlane.position.y = 0;
+  scene.add(shadowPlane);
+}
+
+async function loadLuffy() {
+  const loader = new GLTFLoader();
+  const gltf = await new Promise((resolve, reject) => {
+    loader.load('./assets/luffy.glb', resolve, undefined, reject);
+  });
+
+  luffyModel = gltf.scene;
+
+  // 머티리얼 보정
+  luffyModel.traverse((child) => {
+    if (child.isMesh && child.material) {
+      child.material.side = THREE.DoubleSide;
+      if (child.material.metalness !== undefined) {
+        child.material.metalness = 0.05;
+      }
+    }
+  });
+
+  // 본 찾기 (어깨 1, 어깨 2, 팔꿈치, 손목)
+  // 늘릴 때: shoulder2, elbow의 scale.y 증가시킴 (팔 길이방향)
+  luffyModel.traverse((child) => {
+    if (child.isBone || child.type === 'Bone') {
+      const n = child.name;
+      // 오른팔
+      if (/shoulder 2\.R/i.test(n) || /elbow\.R/i.test(n)) {
+        armBones.R.push(child);
+      }
+      // 왼팔
+      if (/shoulder 2\.L/i.test(n) || /elbow\.L/i.test(n)) {
+        armBones.L.push(child);
+      }
+    }
+  });
+  console.log('Arm bones:', { L: armBones.L.length, R: armBones.R.length });
+
+  // 사이즈 + 위치 조정
+  luffyModel.scale.setScalar(0.8); // 약간 작게
+  luffyModel.position.set(0, -10, 0); // 처음엔 안 보이게 (탭하면 나타남)
+  luffyModel.rotation.y = 0;
+  luffyModel.visible = false; // 처음엔 숨김
+
+  scene.add(luffyModel);
+
+  // 발 아래 그림자 원 추가
+  const shadowGeom = new THREE.CircleGeometry(0.4, 32);
+  const shadowMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.4,
+    side: THREE.DoubleSide,
+  });
+  const shadowMesh = new THREE.Mesh(shadowGeom, shadowMat);
+  shadowMesh.rotation.x = -Math.PI / 2;
+  shadowMesh.position.y = 0.01;
+  shadowMesh.visible = false;
+  shadowMesh.userData.isShadow = true;
+  luffyModel.userData.shadow = shadowMesh;
+  scene.add(shadowMesh);
+
+  // 애니메이션 (있으면)
+  if (gltf.animations && gltf.animations.length > 0) {
+    luffyMixer = new THREE.AnimationMixer(luffyModel);
+    const action = luffyMixer.clipAction(gltf.animations[0]);
+    action.play(); // blink 등 자동
+  }
+}
+
+// =========================================
+// 바닥 터치 → 루피 배치
+// =========================================
+const raycaster = new THREE.Raycaster();
+const tapVec = new THREE.Vector2();
+let luffyPlaced = false;
+
+function handleTap(event) {
+  if (!luffyModel) return;
+
+  // 터치 좌표 (정규화: -1 ~ +1)
+  let clientX, clientY;
+  if (event.touches && event.touches.length > 0) {
+    clientX = event.touches[0].clientX;
+    clientY = event.touches[0].clientY;
+  } else if (event.changedTouches && event.changedTouches.length > 0) {
+    clientX = event.changedTouches[0].clientX;
+    clientY = event.changedTouches[0].clientY;
+  } else {
+    clientX = event.clientX;
+    clientY = event.clientY;
+  }
+
+  tapVec.x = (clientX / window.innerWidth) * 2 - 1;
+  tapVec.y = -(clientY / window.innerHeight) * 2 + 1;
+
+  // 카메라에서 광선 쏘기
+  raycaster.setFromCamera(tapVec, camera);
+
+  // 가상 바닥 평면 (Y=0)과 교차점 계산
+  const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const point = new THREE.Vector3();
+
+  if (raycaster.ray.intersectPlane(floorPlane, point)) {
+    // 너무 멀거나 가까우면 무시
+    if (point.z > 0 || point.z < -8) return;
+
+    placeLuffyAt(point);
+  }
+}
+
+function placeLuffyAt(position) {
+  if (!luffyModel) return;
+
+  luffyModel.visible = true;
+  luffyModel.position.copy(position);
+  // 카메라 보게 회전
+  const angle = Math.atan2(camera.position.x - position.x, camera.position.z - position.z);
+  luffyModel.rotation.y = angle;
+
+  // 그림자 위치
+  if (luffyModel.userData.shadow) {
+    luffyModel.userData.shadow.position.set(position.x, 0.01, position.z);
+    luffyModel.userData.shadow.visible = true;
+  }
+
+  // 등장 애니메이션 (작은 점에서 풍선처럼 커짐)
+  if (!luffyPlaced) {
+    luffyPlaced = true;
+    luffyModel.scale.setScalar(0.01);
+    const startTime = performance.now();
+    function growStep() {
+      const elapsed = performance.now() - startTime;
+      const t = Math.min(1, elapsed / 600);
+      // bounce ease-out
+      const eased = 1 - Math.pow(1 - t, 3);
+      const scale = 0.01 + (0.8 - 0.01) * eased;
+      luffyModel.scale.setScalar(scale);
+      if (t < 1) requestAnimationFrame(growStep);
+    }
+    requestAnimationFrame(growStep);
+
+    // 안내 텍스트 변경
+    hintEl.textContent = '✊ 주먹을 쥐어보세요!';
+
+    // 폭죽 (등장 효과)
+    spawnConfetti();
+
+    // 진동
+    if (navigator.vibrate) navigator.vibrate([50, 30, 100]);
+  } else {
+    // 재배치 시 작은 폭죽
+    spawnSmallPoof(position);
+  }
+}
+
+function spawnSmallPoof(position) {
+  for (let i = 0; i < 12; i++) {
+    const geom = new THREE.SphereGeometry(0.03, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xFFFFFF,
+      transparent: true,
+      opacity: 0.8,
+    });
+    const p = new THREE.Mesh(geom, mat);
+    p.position.copy(position);
+    p.position.y += 0.1;
+    p.userData.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 1.5,
+      Math.random() * 1.0 + 0.3,
+      (Math.random() - 0.5) * 1.5
+    );
+    p.userData.life = 1.0;
+    p.userData.maxLife = 0.6;
+    scene.add(p);
+    confettiParticles.push(p);
+  }
+}
+
+// =========================================
+// 펀치 트리거
+// =========================================
+function triggerPunch() {
+  if (!luffyPlaced) return; // 루피가 아직 배치 안됐으면 무시
+  const now = performance.now();
+  if (now - lastPunchTime < 1500) return;
+  lastPunchTime = now;
+
+  punchCount++;
+  punchCountSpan.textContent = punchCount;
+  punchCounterEl.classList.add('active');
+
+  // 텍스트 폭발
+  punchTextEl.classList.remove('active');
+  void punchTextEl.offsetWidth; // reflow
+  punchTextEl.classList.add('active');
+  setTimeout(() => punchTextEl.classList.remove('active'), 800);
+
+  // 진동
+  if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
+
+  // 팔 늘리기 애니메이션 (오른팔 + 왼팔 동시)
+  const startTime = performance.now();
+  const duration = 1200; // 1.2초
+  const stretchAmount = 5.0; // 5배
+
+  function punchStep() {
+    const elapsed = performance.now() - startTime;
+    const t = Math.min(1, elapsed / duration);
+    // 0~0.4: 늘림, 0.4~1.0: 복귀
+    let progress;
+    if (t < 0.3) {
+      // 빠르게 늘어남
+      progress = (t / 0.3);
+      progress = 1 - Math.pow(1 - progress, 3); // ease-out
+    } else {
+      // 천천히 복귀
+      progress = 1 - ((t - 0.3) / 0.7);
+      progress = Math.max(0, progress);
+    }
+
+    const scale = 1 + (stretchAmount - 1) * progress;
+    armBones.R.forEach(bone => bone.scale.y = scale);
+    armBones.L.forEach(bone => bone.scale.y = scale);
+
+    if (t < 1) {
+      requestAnimationFrame(punchStep);
+    } else {
+      // 원위치
+      armBones.R.forEach(bone => bone.scale.y = 1);
+      armBones.L.forEach(bone => bone.scale.y = 1);
+    }
+  }
+  requestAnimationFrame(punchStep);
+
+  // 폭죽 효과
+  spawnConfetti();
+}
+
+// =========================================
+// 폭죽 (생일 효과)
+// =========================================
+function spawnConfetti() {
+  for (let i = 0; i < 30; i++) {
+    const colors = [0xFFD60A, 0xE63946, 0x06D6A0, 0x118AB2, 0xFFFFFF];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const geom = new THREE.PlaneGeometry(0.05, 0.05);
+    const mat = new THREE.MeshBasicMaterial({
+      color: color,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const p = new THREE.Mesh(geom, mat);
+    p.position.set(
+      (Math.random() - 0.5) * 0.5,
+      1.5 + Math.random() * 0.5,
+      0.3
+    );
+    p.userData.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 2.5,
+      Math.random() * 2.5 + 1.0,
+      (Math.random() - 0.5) * 1.5
+    );
+    p.userData.rotSpeed = (Math.random() - 0.5) * 8;
+    p.userData.life = 1.0;
+    p.userData.maxLife = 1.5 + Math.random() * 1.0;
+    scene.add(p);
+    confettiParticles.push(p);
+  }
+}
+
+// =========================================
+// MediaPipe Hands - 손 추적
+// =========================================
+let hands = null;
+let camera_utils = null;
+
+async function initMediaPipe() {
+  hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+  hands.setOptions({
+    maxNumHands: 2,
+    modelComplexity: 0, // 0=빠름, 1=정확
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.5
+  });
+  hands.onResults(onHandsResults);
+
+  camera_utils = new Camera(videoEl, {
+    onFrame: async () => {
+      await hands.send({ image: videoEl });
+    },
+    width: 640,
+    height: 480
+  });
+  camera_utils.start();
+}
+
+function onHandsResults(results) {
+  if (!luffyPlaced) return; // 루피 배치 전엔 손 인식 무시
+
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    handIndicator.classList.remove('active', 'fist', 'open');
+    hintEl.classList.remove('attack');
+    if (hintEl.classList.contains('active')) {
+      hintEl.textContent = '✋ 손을 카메라 앞에 보여주세요';
+    }
+    return;
+  }
+
+  // 첫 번째 손 분석
+  const landmarks = results.multiHandLandmarks[0];
+  const isFist = detectFist(landmarks);
+
+  handIndicator.classList.add('active');
+  hintEl.classList.add('active');
+
+  if (isFist) {
+    handIndicator.classList.add('fist');
+    handIndicator.classList.remove('open');
+    handIndicator.textContent = '✊ FIST!';
+    hintEl.classList.add('attack');
+    hintEl.textContent = '🥊 고무고무 피스톨!!';
+
+    // 펀치 발동!
+    triggerPunch();
+  } else {
+    handIndicator.classList.add('open');
+    handIndicator.classList.remove('fist');
+    handIndicator.textContent = '✋ OPEN';
+    hintEl.classList.remove('attack');
+    hintEl.textContent = '✊ 주먹을 쥐어보세요!';
+  }
+}
+
+// 주먹 감지: 손가락 끝(8,12,16,20)이 손바닥(0)에 가까운지
+function detectFist(landmarks) {
+  if (!landmarks || landmarks.length < 21) return false;
+
+  const wrist = landmarks[0];
+  // 손가락 끝 (검지, 중지, 약지, 새끼)
+  const tips = [8, 12, 16, 20];
+  // 각 손가락의 base joint (5, 9, 13, 17)
+  const bases = [5, 9, 13, 17];
+
+  let foldedCount = 0;
+  for (let i = 0; i < tips.length; i++) {
+    const tip = landmarks[tips[i]];
+    const base = landmarks[bases[i]];
+    // tip이 base보다 wrist에 가까우면 손가락 접힘
+    const distTipToWrist = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+    const distBaseToWrist = Math.hypot(base.x - wrist.x, base.y - wrist.y);
+    if (distTipToWrist < distBaseToWrist * 1.05) {
+      foldedCount++;
+    }
+  }
+
+  // 4개 중 3개 이상 접히면 주먹
+  return foldedCount >= 3;
+}
+
+// =========================================
+// 메인 시작
+// =========================================
+async function startAR() {
+  try {
+    showStatus(`<div class="spinner"></div><h3>CAMERA INIT</h3>`);
+
+    initThree();
+
+    // 카메라 권한
+    showStatus(`<div class="spinner"></div><h3>CAMERA ACCESS</h3>`);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: 1280, height: 720 }
+    });
+    videoEl.srcObject = stream;
+    await new Promise(resolve => videoEl.onloadedmetadata = resolve);
+    await videoEl.play();
+
+    // Three.js setup
+    showStatus(`<div class="spinner"></div><h3>LOADING LUFFY</h3>`);
+    await loadLuffy();
+
+    // MediaPipe setup
+    showStatus(`<div class="spinner"></div><h3>HAND TRACKING INIT</h3>`);
+    await initMediaPipe();
+
+    hideStatus();
+    arUI.classList.add('active');
+    hintEl.classList.add('active');
+    hintEl.textContent = '👆 바닥/책상을 탭하세요!';
+
+    // 화면 탭으로 루피 배치
+    document.addEventListener('click', handleTap);
+    document.addEventListener('touchend', (e) => {
+      handleTap(e);
+      e.preventDefault();
+    }, { passive: false });
+
+    // 렌더 루프
+    const clock = new THREE.Clock();
+    function render() {
+      const dt = clock.getDelta();
+      const t = clock.getElapsedTime();
+
+      if (luffyMixer) luffyMixer.update(dt);
+
+      // 루피 살짝 떠다니기 (배치된 후)
+      if (luffyModel && luffyPlaced) {
+        // 위아래 살짝 (5cm)
+        const baseY = luffyModel.userData.baseY || 0;
+        if (!luffyModel.userData.baseY) {
+          luffyModel.userData.baseY = luffyModel.position.y;
+        }
+        // 살짝만 위아래로
+        // luffyModel.position.y = baseY + Math.sin(t * 1.5) * 0.02;
+      }
+
+      // 폭죽 업데이트
+      for (let i = confettiParticles.length - 1; i >= 0; i--) {
+        const p = confettiParticles[i];
+        p.userData.life -= dt / p.userData.maxLife;
+        p.position.x += p.userData.velocity.x * dt;
+        p.position.y += p.userData.velocity.y * dt;
+        p.position.z += p.userData.velocity.z * dt;
+        p.userData.velocity.y -= 4 * dt; // 중력
+        p.rotation.z += p.userData.rotSpeed * dt;
+        p.material.opacity = Math.max(0, p.userData.life);
+        if (p.userData.life <= 0) {
+          scene.remove(p);
+          p.geometry.dispose();
+          p.material.dispose();
+          confettiParticles.splice(i, 1);
+        }
+      }
+
+      renderer.render(scene, camera);
+      requestAnimationFrame(render);
+    }
+    render();
+
+  } catch (err) {
+    console.error(err);
+    let msg = err.message || String(err);
+    if (msg.includes('Permission') || msg.includes('denied')) msg = '카메라 권한이 필요합니다';
+    if (location.protocol === 'file:') msg = 'https/localhost로 띄워주세요';
+    showError('AR INIT FAILED', msg);
+  }
+}
+
+// =========================================
+// 종료
+// =========================================
+function stopAR() {
+  if (videoEl.srcObject) {
+    videoEl.srcObject.getTracks().forEach(t => t.stop());
+    videoEl.srcObject = null;
+  }
+  if (camera_utils) camera_utils.stop();
+  document.removeEventListener('click', handleTap);
+  arUI.classList.remove('active');
+  hintEl.classList.remove('active');
+  punchCounterEl.classList.remove('active');
+  handIndicator.classList.remove('active');
+  luffyPlaced = false;
+  if (luffyModel) {
+    luffyModel.visible = false;
+    if (luffyModel.userData.shadow) luffyModel.userData.shadow.visible = false;
+  }
+  startScreen.classList.remove('hidden');
+}
+
+// =========================================
+// 초기화
+// =========================================
+// MediaPipe 라이브러리가 로드됐는지 확인
+function waitForMediaPipe() {
+  return new Promise((resolve) => {
+    const check = () => {
+      if (typeof Hands !== 'undefined' && typeof Camera !== 'undefined') {
+        resolve();
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+}
+
+waitForMediaPipe().then(() => {
+  hideStatus();
+  startBtn.disabled = false;
+  startBtn.textContent = '⚡ START ⚡';
+});
+
+startBtn.addEventListener('click', () => {
+  if (startBtn.disabled) return;
+  startScreen.classList.add('hidden');
+  setTimeout(startAR, 500);
+});
+stopBtn.addEventListener('click', stopAR);
+
+// 화면 사이즈 변경
+window.addEventListener('resize', () => {
+  if (camera && renderer) {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+});
+</script>
+
+</body>
+</html>
