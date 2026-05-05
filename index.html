@@ -376,28 +376,35 @@ async function loadLuffy() {
     });
   }
 
-  // 🦾 팔 본 찾기 (고무고무 늘리기용)
-  // mixamo 본 이름: mixamorig:RightArm, mixamorig:RightForeArm
-  // Bone 타입 체크 빼고 이름으로만 찾기 (더 안정적)
+  // 🦾 팔 본 찾기 — SkinnedMesh의 skeleton에서 직접 가져오기
+  // GLTFLoader가 본을 어떻게 생성하든 skeleton에는 무조건 있음
+  console.log('=== Searching for arm bones ===');
   luffyModel.traverse((child) => {
-    const n = child.name;
-    if (n === 'mixamorig:RightArm' || n === 'mixamorig:RightForeArm') {
-      armBones.R.push(child);
-    }
-    if (n === 'mixamorig:LeftArm' || n === 'mixamorig:LeftForeArm') {
-      armBones.L.push(child);
+    if (child.isSkinnedMesh && child.skeleton) {
+      console.log('Found SkinnedMesh:', child.name, 'with', child.skeleton.bones.length, 'bones');
+      child.skeleton.bones.forEach(bone => {
+        const n = bone.name;
+        if (n === 'mixamorig:RightArm' || n === 'mixamorig:RightForeArm') {
+          if (!armBones.R.includes(bone)) armBones.R.push(bone);
+        }
+        if (n === 'mixamorig:LeftArm' || n === 'mixamorig:LeftForeArm') {
+          if (!armBones.L.includes(bone)) armBones.L.push(bone);
+        }
+      });
     }
   });
   console.log('Arm bones found - L:', armBones.L.length, 'R:', armBones.R.length);
-  armBones.R.forEach(b => console.log('  R:', b.name, 'type:', b.type));
-  armBones.L.forEach(b => console.log('  L:', b.name, 'type:', b.type));
+  armBones.R.forEach(b => console.log('  R:', b.name, '| type:', b.type, '| isBone:', b.isBone));
+  armBones.L.forEach(b => console.log('  L:', b.name, '| type:', b.type, '| isBone:', b.isBone));
 
-  // 못 찾았으면 모든 노드 이름 출력 (디버깅용)
+  // 못 찾았으면 모든 본 이름 출력 (디버깅용)
   if (armBones.R.length === 0) {
-    console.warn('❌ No arm bones found! Listing all named nodes:');
+    console.warn('❌ No arm bones found in skeleton! All bone names:');
     luffyModel.traverse((child) => {
-      if (child.name && child.name.includes('mixamorig')) {
-        console.log('  -', child.name, '(' + child.type + ')');
+      if (child.isSkinnedMesh && child.skeleton) {
+        child.skeleton.bones.forEach(bone => {
+          console.log('  bone:', bone.name);
+        });
       }
     });
   }
@@ -496,9 +503,14 @@ function triggerPunch(mode = 'normal') {
   if (!luffyPlaced) return;
   if (!punchAction) return;
   const now = performance.now();
-  if (now - lastPunchTime < 1500) return;
+  if (now - lastPunchTime < 1500) {
+    console.log('Punch on cooldown, skipping');
+    return;
+  }
   lastPunchTime = now;
   isPunching = true;
+
+  console.log('🥊 triggerPunch mode:', mode, 'armBones.R count:', armBones.R.length);
 
   punchCount++;
   punchCountSpan.textContent = punchCount;
@@ -530,16 +542,19 @@ function triggerPunch(mode = 'normal') {
 
   // 🦾 고무고무 모드일 때만 팔 늘리기 (stretchAmount만 업데이트, 적용은 render loop에서)
   if (mode === 'gomu') {
+    console.log('🦾 GOMU GOMU activated! armBones.R:', armBones.R.length);
     const stretchStart = performance.now();
     const stretchDuration = 1500;
     const maxStretch = 4.0;
+    let lastLogTime = 0;
 
     function stretchStep() {
       const elapsed = performance.now() - stretchStart;
       const t = elapsed / stretchDuration;
       if (t >= 1) {
-        stretchAmount = 1.0; // 원위치
+        stretchAmount = 1.0;
         isPunching = false;
+        console.log('🦾 stretch ended');
         return;
       }
 
@@ -553,6 +568,11 @@ function triggerPunch(mode = 'normal') {
       }
 
       stretchAmount = 1 + (maxStretch - 1) * progress;
+      // 100ms마다 로그
+      if (elapsed - lastLogTime > 100) {
+        console.log('  stretchAmount:', stretchAmount.toFixed(2));
+        lastLogTime = elapsed;
+      }
       requestAnimationFrame(stretchStep);
     }
     requestAnimationFrame(stretchStep);
