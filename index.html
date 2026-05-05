@@ -250,6 +250,8 @@ let luffyModel = null;
 let luffyMixer = null;
 let idleAction = null;
 let punchAction = null;
+let armBones = { L: [], R: [] };
+let isPunching = false;
 let confettiParticles = [];
 
 function initThree() {
@@ -339,6 +341,24 @@ async function loadLuffy() {
       }
     });
   }
+
+  // 🦾 팔 본 찾기 (고무고무 늘리기용)
+  // mixamo 본 이름: mixamorigRightArm, mixamorigRightForeArm, mixamorigLeftArm, mixamorigLeftForeArm
+  luffyModel.traverse((child) => {
+    if (child.isBone || child.type === 'Bone') {
+      const n = child.name.toLowerCase();
+      // 위팔 + 아래팔 (forearm 포함)
+      if (n.includes('rightarm') || n.includes('right_arm') || n.includes('rightforearm')) {
+        armBones.R.push(child);
+      }
+      if (n.includes('leftarm') || n.includes('left_arm') || n.includes('leftforearm')) {
+        armBones.L.push(child);
+      }
+    }
+  });
+  console.log('Arm bones found - L:', armBones.L.length, 'R:', armBones.R.length);
+  armBones.R.forEach(b => console.log('  R:', b.name));
+  armBones.L.forEach(b => console.log('  L:', b.name));
 }
 
 const raycaster = new THREE.Raycaster();
@@ -436,6 +456,7 @@ function triggerPunch() {
   const now = performance.now();
   if (now - lastPunchTime < 1500) return;
   lastPunchTime = now;
+  isPunching = true;
 
   punchCount++;
   punchCountSpan.textContent = punchCount;
@@ -452,6 +473,42 @@ function triggerPunch() {
   idleAction.stop();
   punchAction.reset();
   punchAction.play();
+
+  // 🦾 고무고무 늘리기! (애니메이션과 동시)
+  // punch 애니메이션은 약 2초, 가운데 0.5~1.2초 구간에 팔 뻗는 모션
+  // 이 구간에 팔 본을 늘려서 고무고무 효과
+  const stretchStart = performance.now();
+  const stretchDuration = 1500; // 1.5초 동안
+  const maxStretch = 4.0; // 4배
+
+  function stretchStep() {
+    const elapsed = performance.now() - stretchStart;
+    const t = elapsed / stretchDuration;
+    if (t >= 1) {
+      // 원위치
+      armBones.R.forEach(b => b.scale.y = 1);
+      armBones.L.forEach(b => b.scale.y = 1);
+      isPunching = false;
+      return;
+    }
+
+    // 0~0.4: 빠르게 늘어남, 0.4~1.0: 천천히 복귀
+    let progress;
+    if (t < 0.35) {
+      progress = t / 0.35;
+      progress = 1 - Math.pow(1 - progress, 3); // ease-out
+    } else {
+      progress = 1 - ((t - 0.35) / 0.65);
+      progress = Math.max(0, progress);
+    }
+
+    const scale = 1 + (maxStretch - 1) * progress;
+    armBones.R.forEach(b => b.scale.y = scale);
+    armBones.L.forEach(b => b.scale.y = scale);
+
+    requestAnimationFrame(stretchStep);
+  }
+  requestAnimationFrame(stretchStep);
 
   spawnConfetti();
 }
@@ -557,14 +614,28 @@ function detectFist(landmarks) {
 
 async function switchCamera() {
   if (!videoEl.srcObject) return;
+
+  // 기존 스트림 + MediaPipe 완전 정리
   videoEl.srcObject.getTracks().forEach(t => t.stop());
-  if (camera_utils) camera_utils.stop();
+  videoEl.srcObject = null;
+
+  if (camera_utils) {
+    try { camera_utils.stop(); } catch(e) {}
+    camera_utils = null;
+  }
+
+  // 잠깐 대기 (스트림 완전 종료)
+  await new Promise(r => setTimeout(r, 200));
 
   currentFacing = currentFacing === 'user' ? 'environment' : 'user';
+  console.log('Switching to:', currentFacing);
 
   try {
     await startCameraStream();
+    // MediaPipe도 새 비디오 스트림으로 재초기화
+    await new Promise(r => setTimeout(r, 100));
     await initMediaPipe();
+    console.log('Camera switched to:', currentFacing);
   } catch (e) {
     console.error('Camera switch failed:', e);
   }
