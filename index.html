@@ -263,6 +263,9 @@ let armBones = { L: [], R: [] };
 let isPunching = false;
 let confettiParticles = [];
 
+// 고무고무 늘리기 (매 프레임 강제 적용용)
+let stretchAmount = 1.0;
+
 function initThree() {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -495,7 +498,7 @@ function triggerPunch(mode = 'normal') {
   punchAction.reset();
   punchAction.play();
 
-  // 🦾 고무고무 모드일 때만 팔 늘리기
+  // 🦾 고무고무 모드일 때만 팔 늘리기 (stretchAmount만 업데이트, 적용은 render loop에서)
   if (mode === 'gomu') {
     const stretchStart = performance.now();
     const stretchDuration = 1500;
@@ -505,7 +508,7 @@ function triggerPunch(mode = 'normal') {
       const elapsed = performance.now() - stretchStart;
       const t = elapsed / stretchDuration;
       if (t >= 1) {
-        armBones.R.forEach(b => b.scale.y = 1);
+        stretchAmount = 1.0; // 원위치
         isPunching = false;
         return;
       }
@@ -519,14 +522,11 @@ function triggerPunch(mode = 'normal') {
         progress = Math.max(0, progress);
       }
 
-      const scale = 1 + (maxStretch - 1) * progress;
-      armBones.R.forEach(b => b.scale.y = scale);
-
+      stretchAmount = 1 + (maxStretch - 1) * progress;
       requestAnimationFrame(stretchStep);
     }
     requestAnimationFrame(stretchStep);
   } else {
-    // 일반 펀치는 애니메이션만, 팔 그대로
     setTimeout(() => { isPunching = false; }, 1500);
   }
 
@@ -739,6 +739,14 @@ async function startAR() {
     function render() {
       const dt = clock.getDelta();
       if (luffyMixer) luffyMixer.update(dt);
+
+      // 🦾 고무고무 강제 적용 (mixer가 덮어씌운 scale을 다시 설정)
+      // mixer.update() 직후에 적용해야 mixer가 다시 덮어쓰지 못함
+      if (armBones.R.length > 0) {
+        armBones.R.forEach(b => {
+          b.scale.y = stretchAmount;
+        });
+      }
 
       for (let i = confettiParticles.length - 1; i >= 0; i--) {
         const p = confettiParticles[i];
